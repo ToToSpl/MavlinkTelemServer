@@ -19,6 +19,7 @@ add_executable(server
 
 target_link_libraries(server
    LINK_PRIVATE MAVSDK::mavsdk_telemetry 
+   LINK_PRIVATE MAVSDK::mavsdk_action
    LINK_PRIVATE MAVSDK::mavsdk 
 )
 

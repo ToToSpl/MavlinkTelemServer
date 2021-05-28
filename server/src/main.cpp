@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
+#include <mavsdk/plugins/action/action.h>
 #include <iostream>
 #include <future>
 #include <memory>
@@ -12,16 +13,18 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-
 using namespace mavsdk;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
 
-#define ERROR_CONSOLE_TEXT "\033[31m" // Turn text on console red
+#define ERROR_CONSOLE_TEXT "\033[31m"     // Turn text on console red
 #define TELEMETRY_CONSOLE_TEXT "\033[34m" // Turn text on console blue
-#define NORMAL_CONSOLE_TEXT "\033[0m" // Restore normal console colour
+#define NORMAL_CONSOLE_TEXT "\033[0m"     // Restore normal console colour
 
-struct TelemPack {
+#define BUFFER_SIZE 256
+
+struct TelemPack
+{
     // position
     std::atomic<double> latitude;
     std::atomic<double> longitude;
@@ -46,7 +49,6 @@ struct TelemPack {
     std::atomic<float> batt_voltage;
 };
 
-
 int main()
 {
     Mavsdk mavsdk;
@@ -55,7 +57,8 @@ int main()
 
     connection_result = mavsdk.add_any_connection("udp://:14540");
 
-    if (connection_result != ConnectionResult::Success) {
+    if (connection_result != ConnectionResult::Success)
+    {
         std::cout << ERROR_CONSOLE_TEXT << "Connection failed: " << connection_result
                   << NORMAL_CONSOLE_TEXT << std::endl;
         return 1;
@@ -68,7 +71,8 @@ int main()
     mavsdk.subscribe_on_new_system([&mavsdk, &prom]() {
         auto system = mavsdk.systems().back();
 
-        if (system->has_autopilot()) {
+        if (system->has_autopilot())
+        {
             std::cout << "Discovered autopilot" << std::endl;
 
             // Unsubscribe again as we only want to find one system.
@@ -77,7 +81,8 @@ int main()
         }
     });
 
-    if (fut.wait_for(seconds(3)) == std::future_status::timeout) {
+    if (fut.wait_for(seconds(3)) == std::future_status::timeout)
+    {
         std::cout << ERROR_CONSOLE_TEXT << "No autopilot found, exiting." << NORMAL_CONSOLE_TEXT
                   << std::endl;
         return 1;
@@ -86,13 +91,14 @@ int main()
     auto system = fut.get();
     auto telemetry = Telemetry{system};
     TelemPack pack;
+    auto action = Action{system};
 
     // lambdas for telemetry
     telemetry.subscribe_position([&pack](Telemetry::Position position) {
-       pack.latitude = position.latitude_deg;
-       pack.longitude = position.longitude_deg;
-       pack.abs_alt = position.absolute_altitude_m;
-       pack.rel_alt = position.relative_altitude_m; 
+        pack.latitude = position.latitude_deg;
+        pack.longitude = position.longitude_deg;
+        pack.abs_alt = position.absolute_altitude_m;
+        pack.rel_alt = position.relative_altitude_m;
     });
 
     telemetry.subscribe_velocity_ned([&pack](Telemetry::VelocityNed vel) {
@@ -135,83 +141,121 @@ int main()
         struct sockaddr_in address;
         int opt = 1;
         int addrlen = sizeof(address);
-        char buffer[128] = {0};
+        char buffer[BUFFER_SIZE] = {0};
 
-        if((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+        if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
         {
             std::cout << ERROR_CONSOLE_TEXT << "sock failed" << NORMAL_CONSOLE_TEXT << std::endl;
             return 1;
         }
 
-        if(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+        if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
         {
-      
+
             std::cout << ERROR_CONSOLE_TEXT << "setsockopt failed" << NORMAL_CONSOLE_TEXT << std::endl;
             return 1;
         }
-
 
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = INADDR_ANY;
         address.sin_port = htons(6969);
 
-        if(bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0)
+        if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
         {
             std::cout << ERROR_CONSOLE_TEXT << "sock bind failed" << NORMAL_CONSOLE_TEXT << std::endl;
             return 1;
-            
         }
 
-        while(listen(server_fd, 10) >= 0)
+        while (listen(server_fd, 10) >= 0)
         {
-            if((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0)
+            memset(buffer, 0, BUFFER_SIZE);
+            if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
             {
-               std::cout << TELEMETRY_CONSOLE_TEXT << "accepting failed" << NORMAL_CONSOLE_TEXT << std::endl;
-               continue;
+                std::cout << TELEMETRY_CONSOLE_TEXT << "accepting failed" << NORMAL_CONSOLE_TEXT << std::endl;
+                continue;
             }
 
-            read(new_socket, buffer, 128);
-            if(std::string(buffer) == "get")
+            read(new_socket, buffer, BUFFER_SIZE);
+            if (std::string(buffer) == "get")
             {
                 // pack to json
                 nlohmann::json j;
                 j["position"] = {
-                    {"lat",     (double)pack.latitude},
-                    {"lon",     (double)pack.longitude},
+                    {"lat", (double)pack.latitude},
+                    {"lon", (double)pack.longitude},
                     {"alt_abs", (float)pack.abs_alt},
-                    {"alt_rel", (float)pack.rel_alt}
-                };
+                    {"alt_rel", (float)pack.rel_alt}};
                 j["velocity"] = {
-                    {"north",   (float)pack.vel_north},
-                    {"east",    (float)pack.vel_east},
-                    {"down",    (float)pack.vel_down}
-                };
+                    {"north", (float)pack.vel_north},
+                    {"east", (float)pack.vel_east},
+                    {"down", (float)pack.vel_down}};
                 j["plane"] = {
-                    {"airspeed",    (float)pack.airspeed},
-                    {"climbrate",   (float)pack.climb_rate}
-                };
+                    {"airspeed", (float)pack.airspeed},
+                    {"climbrate", (float)pack.climb_rate}};
                 j["angles"] = {
-                    {"pitch",   (float)pack.pitch_deg},
-                    {"roll",    (float)pack.roll_deg},
-                    {"yaw",     (float)pack.yaw_deg}
-                };
+                    {"pitch", (float)pack.pitch_deg},
+                    {"roll", (float)pack.roll_deg},
+                    {"yaw", (float)pack.yaw_deg}};
                 j["battery"] = {
                     {"percent", (float)pack.batt_percentage},
-                    {"voltage", (float)pack.batt_voltage}
-                };
+                    {"voltage", (float)pack.batt_voltage}};
                 j["misc"] = {
-                    {"health",  (bool)pack.isAllOk},
-                    {"armed",   (bool)pack.isArmed},
-                    {"inAir",     (bool)pack.inAir}
-                };
+                    {"health", (bool)pack.isAllOk},
+                    {"armed", (bool)pack.isArmed},
+                    {"inAir", (bool)pack.inAir}};
 
                 std::string jsonDump = j.dump();
 
                 send(new_socket, jsonDump.c_str(), jsonDump.length(), 0);
-                
+
+                continue;
             }
 
-            memset(buffer, 0, 128);
+            nlohmann::json command;
+            std::string command_type;
+            try
+            {
+                command = nlohmann::json::parse(buffer);
+                command_type = (std::string)command["command"];
+            }
+            catch (nlohmann::json::parse_error &ex)
+            {
+                std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
+                std::string error(ex.what());
+                send(new_socket, error.c_str(), error.size(), 0);
+                continue;
+            }
+
+            if (command_type == "goto")
+            {
+                double lat, lon;
+                float alt, heading;
+                try
+                {
+                    lat = (double)command["lat"];
+                    lon = (double)command["lon"];
+                    alt = (float)command["alt"];
+                    heading = (float)command["heading"];
+                }
+                catch (nlohmann::json::exception &ex)
+                {
+                    std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
+                    std::string error(ex.what());
+                    send(new_socket, error.c_str(), error.size(), 0);
+                    continue;
+                }
+                float alt_abs = pack.abs_alt + (alt - pack.rel_alt);
+                auto result = action.goto_location(lat, lon, alt_abs, heading);
+                if (result == Action::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
         }
     }
 
