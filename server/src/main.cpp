@@ -68,18 +68,19 @@ int main()
     auto prom = std::promise<std::shared_ptr<System>>{};
     auto fut = prom.get_future();
 
-    mavsdk.subscribe_on_new_system([&mavsdk, &prom]() {
-        auto system = mavsdk.systems().back();
+    mavsdk.subscribe_on_new_system([&mavsdk, &prom]()
+                                   {
+                                       auto system = mavsdk.systems().back();
 
-        if (system->has_autopilot())
-        {
-            std::cout << "Discovered autopilot" << std::endl;
+                                       if (system->has_autopilot())
+                                       {
+                                           std::cout << "Discovered autopilot" << std::endl;
 
-            // Unsubscribe again as we only want to find one system.
-            mavsdk.subscribe_on_new_system(nullptr);
-            prom.set_value(system);
-        }
-    });
+                                           // Unsubscribe again as we only want to find one system.
+                                           mavsdk.subscribe_on_new_system(nullptr);
+                                           prom.set_value(system);
+                                       }
+                                   });
 
     if (fut.wait_for(seconds(3)) == std::future_status::timeout)
     {
@@ -94,46 +95,48 @@ int main()
     auto action = Action{system};
 
     // lambdas for telemetry
-    telemetry.subscribe_position([&pack](Telemetry::Position position) {
-        pack.latitude = position.latitude_deg;
-        pack.longitude = position.longitude_deg;
-        pack.abs_alt = position.absolute_altitude_m;
-        pack.rel_alt = position.relative_altitude_m;
-    });
+    telemetry.subscribe_position([&pack](Telemetry::Position position)
+                                 {
+                                     pack.latitude = position.latitude_deg;
+                                     pack.longitude = position.longitude_deg;
+                                     pack.abs_alt = position.absolute_altitude_m;
+                                     pack.rel_alt = position.relative_altitude_m;
+                                 });
 
-    telemetry.subscribe_velocity_ned([&pack](Telemetry::VelocityNed vel) {
-        pack.vel_down = vel.down_m_s;
-        pack.vel_east = vel.east_m_s;
-        pack.vel_north = vel.north_m_s;
-    });
+    telemetry.subscribe_velocity_ned([&pack](Telemetry::VelocityNed vel)
+                                     {
+                                         pack.vel_down = vel.down_m_s;
+                                         pack.vel_east = vel.east_m_s;
+                                         pack.vel_north = vel.north_m_s;
+                                     });
 
-    telemetry.subscribe_fixedwing_metrics([&pack](Telemetry::FixedwingMetrics met) {
-        pack.airspeed = met.airspeed_m_s;
-        pack.climb_rate = met.climb_rate_m_s;
-    });
+    telemetry.subscribe_fixedwing_metrics([&pack](Telemetry::FixedwingMetrics met)
+                                          {
+                                              pack.airspeed = met.airspeed_m_s;
+                                              pack.climb_rate = met.climb_rate_m_s;
+                                          });
 
-    telemetry.subscribe_attitude_euler([&pack](Telemetry::EulerAngle ang) {
-        pack.pitch_deg = ang.pitch_deg;
-        pack.roll_deg = ang.roll_deg;
-        pack.yaw_deg = ang.yaw_deg;
-    });
+    telemetry.subscribe_attitude_euler([&pack](Telemetry::EulerAngle ang)
+                                       {
+                                           pack.pitch_deg = ang.pitch_deg;
+                                           pack.roll_deg = ang.roll_deg;
+                                           pack.yaw_deg = ang.yaw_deg;
+                                       });
 
-    telemetry.subscribe_battery([&pack](Telemetry::Battery batt) {
-        pack.batt_percentage = batt.remaining_percent;
-        pack.batt_voltage = batt.voltage_v;
-    });
+    telemetry.subscribe_battery([&pack](Telemetry::Battery batt)
+                                {
+                                    pack.batt_percentage = batt.remaining_percent;
+                                    pack.batt_voltage = batt.voltage_v;
+                                });
 
-    telemetry.subscribe_health_all_ok([&pack](bool health) {
-        pack.isAllOk = health;
-    });
+    telemetry.subscribe_health_all_ok([&pack](bool health)
+                                      { pack.isAllOk = health; });
 
-    telemetry.subscribe_armed([&pack](bool armed) {
-        pack.isArmed = armed;
-    });
+    telemetry.subscribe_armed([&pack](bool armed)
+                              { pack.isArmed = armed; });
 
-    telemetry.subscribe_in_air([&pack](bool inAir) {
-        pack.inAir = inAir;
-    });
+    telemetry.subscribe_in_air([&pack](bool inAir)
+                               { pack.inAir = inAir; });
 
     // server loop
     {
@@ -246,6 +249,46 @@ int main()
                 }
                 float alt_abs = pack.abs_alt + (alt - pack.rel_alt);
                 auto result = action.goto_location(lat, lon, alt_abs, heading);
+                if (result == Action::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
+
+            if (command_type == "takeoff")
+            {
+                float alt;
+                try
+                {
+                    alt = (float)command["alt"]
+                }
+                catch (nlohmann::json::exception &ex)
+                {
+                    std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
+                    std::string error(ex.what());
+                    send(new_socket, error.c_str(), error.size(), 0);
+                    continue;
+                }
+                auto result = action.takeoff(alt);
+                if (result == Action::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
+
+            if (command_type == "rtl")
+            {
+                auto result = action.return_to_launch();
                 if (result == Action::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
