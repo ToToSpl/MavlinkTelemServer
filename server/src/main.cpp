@@ -265,7 +265,7 @@ int main()
                 float alt;
                 try
                 {
-                    alt = (float)command["alt"]
+                    alt = (float)command["alt"];
                 }
                 catch (nlohmann::json::exception &ex)
                 {
@@ -274,14 +274,62 @@ int main()
                     send(new_socket, error.c_str(), error.size(), 0);
                     continue;
                 }
-                auto result = action.takeoff(alt);
+                auto change_alt_result = action.set_takeoff_altitude(alt);
+                if (change_alt_result != Action::Result::Success)
+                {
+                    send(new_socket, "failed change_alt", 18, 0);
+                    continue;
+                }
+
+                auto result = action.takeoff();
                 if (result == Action::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
                 }
                 else
                 {
-                    send(new_socket, "failed", 7, 0);
+                    send(new_socket, "failed takeoff", 15, 0);
+                }
+                continue;
+            }
+
+            if (command_type == "arm_takeoff")
+            {
+                float alt;
+                try
+                {
+                    alt = (float)command["alt"];
+                }
+                catch (nlohmann::json::exception &ex)
+                {
+                    std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
+                    std::string error(ex.what());
+                    send(new_socket, error.c_str(), error.size(), 0);
+                    continue;
+                }
+
+                auto change_alt_result = action.set_takeoff_altitude(alt);
+                if (change_alt_result != Action::Result::Success)
+                {
+                    send(new_socket, "failed change_alt", 18, 0);
+                    continue;
+                }
+
+                auto arm_result = action.arm();
+                if (arm_result != Action::Result::Success)
+                {
+                    send(new_socket, "failed arm", 11, 0);
+                    continue;
+                }
+
+                auto result = action.takeoff();
+                if (result == Action::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed takeoff", 15, 0);
                 }
                 continue;
             }
