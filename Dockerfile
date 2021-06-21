@@ -12,12 +12,12 @@ RUN apt-get update && apt-get install build-essential cmake git -y
 
 RUN git clone https://github.com/mavlink/MAVSDK.git &&\
     cd MAVSDK &&\
-    git checkout v0.39.0 &&\
+    git checkout v0.40.0 &&\
     git submodule update --init --recursive
 
 RUN cd MAVSDK &&\
     cmake -Bbuild/default -DCMAKE_BUILD_TYPE=Release -H. &&\
-    cmake --build build/default -j12 &&\
+    cmake --build build/default -j4 &&\
     cmake --build build/default --target install &&\
     ldconfig
 
