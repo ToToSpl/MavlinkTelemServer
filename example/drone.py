@@ -9,14 +9,32 @@ class Drone:
     def __init__(self, ip, port):
         self.ip = ip
         self.port = port
+        self.udp_telem = False
+    
+    def __del__(self):
+        if self.udp_telem:
+            self.udp_sock.close()
+
+    def registerUDP(self):
+        command = {
+            "command": "add_udp"
+        }
+        self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp_sock.bind(("0.0.0.0", 6969))
+        self.udp_telem = True
+        return self.__sendPacket(command)
 
     def getTelem(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((self.ip, self.port))
-        sock.sendall(b'get')
-        data = json.loads(sock.recv(2048))
-        sock.close()
-        return data
+        if self.udp_telem:
+            data, _ = self.udp_sock.recvfrom(2048)
+            return json.loads(data)
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((self.ip, self.port))
+            sock.sendall(b'get')
+            data = json.loads(sock.recv(2048))
+            sock.close()
+            return data
 
     def __sendPacket(self, command):
         raw_command = bytes(json.dumps(command), 'utf-8')

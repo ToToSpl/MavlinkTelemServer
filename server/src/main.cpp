@@ -5,6 +5,7 @@
 #include <mavsdk/plugins/action/action.h>
 #include <iostream>
 #include <future>
+#include <vector>
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -12,6 +13,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 using namespace mavsdk;
 using std::chrono::seconds;
@@ -22,38 +24,83 @@ using std::this_thread::sleep_for;
 #define NORMAL_CONSOLE_TEXT "\033[0m"     // Restore normal console colour
 
 #define BUFFER_SIZE 256
+#define REFRESH_TELEM 90.0f
 
 struct TelemPack
 {
     // position
-    std::atomic<double> latitude;
-    std::atomic<double> longitude;
-    std::atomic<float> abs_alt;
-    std::atomic<float> rel_alt;
+    std::atomic<double> latitude = 0.0f;
+    std::atomic<double> longitude = 0.0f;
+    std::atomic<float> abs_alt = 0.0f;
+    std::atomic<float> rel_alt = 0.0f;
     // velocity
-    std::atomic<float> vel_north;
-    std::atomic<float> vel_east;
-    std::atomic<float> vel_down;
+    std::atomic<float> vel_north = 0.0f;
+    std::atomic<float> vel_east = 0.0f;
+    std::atomic<float> vel_down = 0.0f;
     // plane data
-    std::atomic<float> airspeed;
-    std::atomic<float> climb_rate;
+    std::atomic<float> airspeed = 0.0f;
+    std::atomic<float> climb_rate = 0.0f;
     // angle
-    std::atomic<float> roll_deg;
-    std::atomic<float> pitch_deg;
-    std::atomic<float> yaw_deg;
+    std::atomic<float> roll_deg = 0.0f;
+    std::atomic<float> pitch_deg = 0.0f;
+    std::atomic<float> yaw_deg = 0.0f;
     // misc
-    std::atomic<bool> isAllOk;
-    std::atomic<bool> isArmed;
-    std::atomic<bool> inAir;
-    std::atomic<float> batt_percentage;
-    std::atomic<float> batt_voltage;
+    std::atomic<bool> isAllOk = false;
+    std::atomic<bool> isArmed = false;
+    std::atomic<bool> inAir = false;
+    std::atomic<float> batt_percentage = 0.0f;
+    std::atomic<float> batt_voltage = 0.0f;
 };
+
+static int udp_sockfd;
+static struct sockaddr_in udp_servaddr, udp_cliaddr;
+
+std::string pack_to_json(TelemPack &pack)
+{
+    try
+    {
+        nlohmann::json j;
+        j["position"] = {
+            {"lat", (double)pack.latitude},
+            {"lon", (double)pack.longitude},
+            {"alt_abs", (float)pack.abs_alt},
+            {"alt_rel", (float)pack.rel_alt}};
+        j["velocity"] = {
+            {"north", (float)pack.vel_north},
+            {"east", (float)pack.vel_east},
+            {"down", (float)pack.vel_down}};
+        j["plane"] = {
+            {"airspeed", (float)pack.airspeed},
+            {"climbrate", (float)pack.climb_rate}};
+        j["angles"] = {
+            {"pitch", (float)pack.pitch_deg},
+            {"roll", (float)pack.roll_deg},
+            {"yaw", (float)pack.yaw_deg}};
+        j["battery"] = {
+            {"percent", (float)pack.batt_percentage},
+            {"voltage", (float)pack.batt_voltage}};
+        j["misc"] = {
+            {"health", (bool)pack.isAllOk},
+            {"armed", (bool)pack.isArmed},
+            {"inAir", (bool)pack.inAir}};
+
+        return j.dump();
+    }
+    catch (nlohmann::json::exception &ex)
+    {
+        std::cerr << ex.what() << std::endl;
+        return "";
+    }
+}
 
 int main()
 {
     Mavsdk mavsdk;
     std::string connection_url;
     ConnectionResult connection_result;
+    TelemPack global_pack;
+
+    std::vector<std::string> udp_ips = {};
 
     connection_result = mavsdk.add_any_connection("udp://:14540");
 
@@ -91,53 +138,96 @@ int main()
 
     auto system = fut.get();
     auto telemetry = Telemetry{system};
-    TelemPack pack;
     auto action = Action{system};
 
     // lambdas for telemetry
-    telemetry.subscribe_position([&pack](Telemetry::Position position)
+    telemetry.subscribe_position([&global_pack](Telemetry::Position position)
                                  {
-                                     pack.latitude = position.latitude_deg;
-                                     pack.longitude = position.longitude_deg;
-                                     pack.abs_alt = position.absolute_altitude_m;
-                                     pack.rel_alt = position.relative_altitude_m;
+                                     global_pack.latitude = position.latitude_deg;
+                                     global_pack.longitude = position.longitude_deg;
+                                     global_pack.abs_alt = position.absolute_altitude_m;
+                                     global_pack.rel_alt = position.relative_altitude_m;
                                  });
 
-    telemetry.subscribe_velocity_ned([&pack](Telemetry::VelocityNed vel)
+    telemetry.subscribe_velocity_ned([&global_pack](Telemetry::VelocityNed vel)
                                      {
-                                         pack.vel_down = vel.down_m_s;
-                                         pack.vel_east = vel.east_m_s;
-                                         pack.vel_north = vel.north_m_s;
+                                         global_pack.vel_down = vel.down_m_s;
+                                         global_pack.vel_east = vel.east_m_s;
+                                         global_pack.vel_north = vel.north_m_s;
                                      });
 
-    telemetry.subscribe_fixedwing_metrics([&pack](Telemetry::FixedwingMetrics met)
+    telemetry.subscribe_fixedwing_metrics([&global_pack](Telemetry::FixedwingMetrics met)
                                           {
-                                              pack.airspeed = met.airspeed_m_s;
-                                              pack.climb_rate = met.climb_rate_m_s;
+                                              global_pack.airspeed = met.airspeed_m_s;
+                                              global_pack.climb_rate = met.climb_rate_m_s;
                                           });
 
-    telemetry.subscribe_attitude_euler([&pack](Telemetry::EulerAngle ang)
+    telemetry.subscribe_attitude_euler([&global_pack](Telemetry::EulerAngle ang)
                                        {
-                                           pack.pitch_deg = ang.pitch_deg;
-                                           pack.roll_deg = ang.roll_deg;
-                                           pack.yaw_deg = ang.yaw_deg;
+                                           global_pack.pitch_deg = ang.pitch_deg;
+                                           global_pack.roll_deg = ang.roll_deg;
+                                           global_pack.yaw_deg = ang.yaw_deg;
                                        });
 
-    telemetry.subscribe_battery([&pack](Telemetry::Battery batt)
+    telemetry.subscribe_battery([&global_pack](Telemetry::Battery batt)
                                 {
-                                    pack.batt_percentage = batt.remaining_percent;
-                                    pack.batt_voltage = batt.voltage_v;
+                                    global_pack.batt_percentage = batt.remaining_percent;
+                                    global_pack.batt_voltage = batt.voltage_v;
                                 });
 
-    telemetry.subscribe_health_all_ok([&pack](bool health)
-                                      { pack.isAllOk = health; });
+    telemetry.subscribe_health_all_ok([&global_pack](bool health)
+                                      { global_pack.isAllOk = health; });
 
-    telemetry.subscribe_armed([&pack](bool armed)
-                              { pack.isArmed = armed; });
+    telemetry.subscribe_armed([&global_pack](bool armed)
+                              { global_pack.isArmed = armed; });
 
-    telemetry.subscribe_in_air([&pack](bool inAir)
-                               { pack.inAir = inAir; });
+    telemetry.subscribe_in_air([&global_pack](bool inAir)
+                               { global_pack.inAir = inAir; });
 
+    // creating udp thread
+    {
+        if ((udp_sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+        {
+            std::cout << ERROR_CONSOLE_TEXT << "udp socket failed!" << NORMAL_CONSOLE_TEXT << std::endl;
+            return 1;
+        }
+
+        memset(&udp_servaddr, 0, sizeof(udp_servaddr));
+        memset(&udp_cliaddr, 0, sizeof(udp_cliaddr));
+
+        udp_servaddr.sin_family = AF_INET;
+        udp_servaddr.sin_addr.s_addr = INADDR_ANY;
+        udp_cliaddr.sin_port = htons(6969);
+        udp_cliaddr.sin_family = AF_INET;
+        udp_cliaddr.sin_addr.s_addr = INADDR_ANY;
+
+        if (bind(udp_sockfd, (const struct sockaddr *)&udp_servaddr, sizeof(udp_servaddr)) < 0)
+        {
+            std::cout << ERROR_CONSOLE_TEXT << "udp bind failed!" << NORMAL_CONSOLE_TEXT << std::endl;
+            return 1;
+        }
+
+        auto send_thread = std::thread([&udp_ips, &global_pack]()
+                                       {
+                                           int period_ms = (1.0f / REFRESH_TELEM) * 1000.0f;
+                                           while (true)
+                                           {
+                                               auto t1 = std::chrono::high_resolution_clock::now();
+                                               auto json_pack = pack_to_json(global_pack);
+                                               for (auto ip : udp_ips)
+                                               {
+                                                   udp_cliaddr.sin_addr.s_addr = inet_addr(ip.c_str());
+                                                   sendto(udp_sockfd, (const char *)json_pack.c_str(), json_pack.length(),
+                                                          MSG_CONFIRM, (const struct sockaddr *)&udp_cliaddr, sizeof(udp_cliaddr));
+                                               }
+                                               auto t2 = std::chrono::high_resolution_clock::now();
+                                               auto sending_time = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+                                               std::this_thread::sleep_for(
+                                                   std::chrono::milliseconds(period_ms - sending_time.count()));
+                                           }
+                                       });
+        send_thread.detach();
+    }
     // server loop
     {
         int server_fd, new_socket;
@@ -182,35 +272,8 @@ int main()
             if (std::string(buffer) == "get")
             {
                 // pack to json
-                nlohmann::json j;
-                j["position"] = {
-                    {"lat", (double)pack.latitude},
-                    {"lon", (double)pack.longitude},
-                    {"alt_abs", (float)pack.abs_alt},
-                    {"alt_rel", (float)pack.rel_alt}};
-                j["velocity"] = {
-                    {"north", (float)pack.vel_north},
-                    {"east", (float)pack.vel_east},
-                    {"down", (float)pack.vel_down}};
-                j["plane"] = {
-                    {"airspeed", (float)pack.airspeed},
-                    {"climbrate", (float)pack.climb_rate}};
-                j["angles"] = {
-                    {"pitch", (float)pack.pitch_deg},
-                    {"roll", (float)pack.roll_deg},
-                    {"yaw", (float)pack.yaw_deg}};
-                j["battery"] = {
-                    {"percent", (float)pack.batt_percentage},
-                    {"voltage", (float)pack.batt_voltage}};
-                j["misc"] = {
-                    {"health", (bool)pack.isAllOk},
-                    {"armed", (bool)pack.isArmed},
-                    {"inAir", (bool)pack.inAir}};
-
-                std::string jsonDump = j.dump();
-
+                std::string jsonDump = pack_to_json(global_pack);
                 send(new_socket, jsonDump.c_str(), jsonDump.length(), 0);
-
                 continue;
             }
 
@@ -247,7 +310,7 @@ int main()
                     send(new_socket, error.c_str(), error.size(), 0);
                     continue;
                 }
-                float alt_abs = pack.abs_alt + (alt - pack.rel_alt);
+                float alt_abs = global_pack.abs_alt + (alt - global_pack.rel_alt);
                 auto result = action.goto_location(lat, lon, alt_abs, heading);
                 if (result == Action::Result::Success)
                 {
@@ -346,6 +409,16 @@ int main()
                     send(new_socket, "failed", 7, 0);
                 }
                 continue;
+            }
+
+            if (command_type == "add_udp")
+            {
+                struct sockaddr_in *pV4Addr = (struct sockaddr_in *)&address;
+                struct in_addr ipAddr = pV4Addr->sin_addr;
+                char str[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &ipAddr, str, INET_ADDRSTRLEN);
+                udp_ips.push_back(std::string(str));
+                send(new_socket, "success", 8, 0);
             }
         }
     }
