@@ -420,6 +420,34 @@ int main()
                 udp_ips.push_back(std::string(str));
                 send(new_socket, "success", 8, 0);
             }
+
+            if (command_type == "actuator")
+            {
+                int index;
+                float value;
+                try
+                {
+                    index = (int)command["index"];
+                    value = (float)command["value"];
+                }
+                catch (nlohmann::json::exception &ex)
+                {
+                    std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
+                    std::string error(ex.what());
+                    send(new_socket, error.c_str(), error.size(), 0);
+                    continue;
+                }
+                auto result = action.set_actuator(index, value);
+                if (result == Action::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
         }
     }
 

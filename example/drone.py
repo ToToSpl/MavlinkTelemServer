@@ -15,7 +15,7 @@ class Drone:
         command = {
             "command": "add_udp"
         }
-        
+
         self.udp_telem = True
         return self.__sendPacket(command)
 
@@ -70,6 +70,14 @@ class Drone:
     def rtl(self):
         command = {
             "command": "rtl",
+        }
+        return self.__sendPacket(command)
+
+    def actuator(self, index, value):
+        command = {
+            "command": "actuator",
+            "index": int(index),
+            "value": float(value)
         }
         return self.__sendPacket(command)
 
