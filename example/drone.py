@@ -3,6 +3,9 @@
 '''
 import socket
 import json
+import select
+
+MAX_TIMEOUT = 2
 
 
 class Drone:
@@ -37,11 +40,17 @@ class Drone:
     def __sendPacket(self, command):
         raw_command = bytes(json.dumps(command), 'utf-8')
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setblocking(0)
         sock.connect((self.ip, self.port))
         sock.sendall(raw_command)
-        response = sock.recv(256)
-        sock.close()
-        return response == b'success\x00'
+        ready = select.select([sock], [], [], MAX_TIMEOUT)
+        if ready[0]:
+            response = sock.recv(256)
+            sock.close()
+            return response == b'success\x00'
+        else:
+            sock.close()
+            return self.__sendPacket(command)
 
     def goto(self, lat, lon, alt, heading):
         command = {
@@ -115,6 +124,7 @@ def main():
     #     time.sleep(0.1)
 
     # print(drone.getTelem())
+
 
     # drone.goto(
     #     47.39807052349714,
