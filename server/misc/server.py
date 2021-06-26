@@ -58,7 +58,7 @@ class Server:
         self.sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock_tcp.bind(("", COMM_PORT))
         self.sock_tcp.listen(2)
-        self.ser = serial.Serial('/dev/ttyUSB0')
+        self.ser = serial.Serial('/dev/ttyAMA1', 9600)
     def __del__(self):
         self.sock_tcp.close()
         self.ser.close()

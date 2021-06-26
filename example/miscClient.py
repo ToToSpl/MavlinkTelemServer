@@ -85,17 +85,19 @@ if __name__ == "__main__":
     misc = MiscClient()
     prev_pos = 0
     while True:
-        # num = random.randint(0, 2)
-        # while num == prev_pos:
-        #     num = random.randint(0, 2)
-        # if num == 0:
-        #     misc.shot_left()
-        # else:
-        #     misc.shot_right()
-        # prev_pos = num
-        # time.sleep(10)
+        num = random.randint(0, 2)
+        while num == prev_pos:
+            num = random.randint(0, 2)
+        if num == 0:
+            print("parch")
+            misc.shot_parch()
+        else:
+            print("macz")
+            misc.shot_macz()
+        prev_pos = num
+        time.sleep(10)
 
-        img = misc.recievePhoto()
-        cv2.imshow('frame', img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # img = misc.recievePhoto()
+        # cv2.imshow('frame', img)
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
