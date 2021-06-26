@@ -31,12 +31,12 @@ class MiscClient:
             sock.close()
             return self.__sendPacket(command)
 
-    def shot_left(self):
-        command = {"command": "shot_left"}
+    def shot_parch(self):
+        command = {"command": "shot_parch"}
         return self.__sendPacket(command)
 
-    def shot_right(self):
-        command = {"command": "shot_right"}
+    def shot_macz(self):
+        command = {"command": "shot_macz"}
         return self.__sendPacket(command)
 
     def register_udp(self):

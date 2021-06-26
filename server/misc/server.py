@@ -2,7 +2,6 @@ import socket
 import json
 
 from numpy import add
-import RPi.GPIO as GPIO
 import math
 import cv2
 import struct
@@ -10,15 +9,12 @@ from picamera.array import PiRGBArray
 from picamera import PiCamera
 from threading import Thread
 import time
+import serial
 
 COMM_PORT = 6970
 MAX_DGRAM = 2**16
 MAX_IMAGE_DGRAM = MAX_DGRAM - 64
 IMAGE_QUALITY = 80
-SHOT_NEUTRAL = 7.5
-SHOT_L_PWM = 5.0
-SHOT_R_PWM = 10.0
-PWM_PIN = 12
 SHUTTER_SPEED = 30000  # 30ms
 
 addresses = []
@@ -62,16 +58,10 @@ class Server:
         self.sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock_tcp.bind(("", COMM_PORT))
         self.sock_tcp.listen(2)
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setup(PWM_PIN, GPIO.OUT)
-        self.pwm = GPIO.PWM(PWM_PIN, 50)
-        GPIO.output(PWM_PIN, True)
-        self.pwm.start(0)
-        self.pwm.ChangeDutyCycle(SHOT_NEUTRAL)
-
+        self.ser = serial.Serial('/dev/ttyUSB0')
     def __del__(self):
         self.sock_tcp.close()
+        self.ser.close()
 
     def loop(self):
         while True:
@@ -83,15 +73,11 @@ class Server:
                     conn.sendall(b'success')
                 else:
                     conn.sendall(b'failed')
-            elif command['command'] == "shot_left":
-                self.pwm.ChangeDutyCycle(SHOT_L_PWM)
-                time.sleep(1)
-                self.pwm.ChangeDutyCycle(SHOT_NEUTRAL)
+            elif command['command'] == "shot_parch":
+                self.ser.write(b'P')
                 conn.sendall(b'success')
-            elif command['command'] == "shot_right":
-                self.pwm.ChangeDutyCycle(SHOT_R_PWM)
-                time.sleep(1)
-                self.pwm.ChangeDutyCycle(SHOT_NEUTRAL)
+            elif command['command'] == "shot_macz":
+                self.ser.write(b'M')
                 conn.sendall(b'success')
             conn.close()
 
