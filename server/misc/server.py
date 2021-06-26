@@ -15,11 +15,11 @@ COMM_PORT = 6970
 MAX_DGRAM = 2**16
 MAX_IMAGE_DGRAM = MAX_DGRAM - 64
 IMAGE_QUALITY = 80
-SHOT_NEUTRAL = 0.075
-SHOT_L_PWM = 0.05
-SHOT_R_PWM = 0.1
+SHOT_NEUTRAL = 7.5
+SHOT_L_PWM = 5.0
+SHOT_R_PWM = 10.0
 PWM_PIN = 12
-SHUTTER_SPEED = 1000  # 1ms
+SHUTTER_SPEED = 30000  # 30ms
 
 addresses = []
 
@@ -68,8 +68,7 @@ class Server:
         self.pwm = GPIO.PWM(PWM_PIN, 50)
         GPIO.output(PWM_PIN, True)
         self.pwm.start(0)
-        duty = SHOT_NEUTRAL / 18 + 2
-        self.pwm.ChangeDutyCycle(duty)
+        self.pwm.ChangeDutyCycle(SHOT_NEUTRAL)
 
     def __del__(self):
         self.sock_tcp.close()
