@@ -15,9 +15,9 @@ COMM_PORT = 6970
 MAX_DGRAM = 2**16
 MAX_IMAGE_DGRAM = MAX_DGRAM - 64
 IMAGE_QUALITY = 80
-SHOT_NEUTRAL = 0
-SHOT_L_PWM = 40
-SHOT_R_PWM = 80
+SHOT_NEUTRAL = 0.075
+SHOT_L_PWM = 0.05
+SHOT_R_PWM = 0.1
 PWM_PIN = 12
 SHUTTER_SPEED = 1000  # 1ms
 
@@ -85,18 +85,14 @@ class Server:
                 else:
                     conn.sendall(b'failed')
             elif command['command'] == "shot_left":
-                duty = SHOT_L_PWM / 18 + 2
-                self.pwm.ChangeDutyCycle(duty)
+                self.pwm.ChangeDutyCycle(SHOT_L_PWM)
                 time.sleep(1)
-                duty = SHOT_NEUTRAL / 18 + 2
-                self.pwm.ChangeDutyCycle(duty)
+                self.pwm.ChangeDutyCycle(SHOT_NEUTRAL)
                 conn.sendall(b'success')
             elif command['command'] == "shot_right":
-                duty = SHOT_R_PWM / 18 + 2
-                self.pwm.ChangeDutyCycle(duty)
+                self.pwm.ChangeDutyCycle(SHOT_R_PWM)
                 time.sleep(1)
-                duty = SHOT_NEUTRAL / 18 + 2
-                self.pwm.ChangeDutyCycle(duty)
+                self.pwm.ChangeDutyCycle(SHOT_NEUTRAL)
                 conn.sendall(b'success')
             conn.close()
 
