@@ -9,6 +9,7 @@ import struct
 from picamera.array import PiRGBArray
 from picamera import PiCamera
 from threading import Thread
+import time
 
 COMM_PORT = 6970
 MAX_DGRAM = 2**16
@@ -26,7 +27,7 @@ addresses = []
 class ImageServer(Thread):
     def __init__(self):
         Thread.__init__(self)
-        self.daemon(True)
+        self.daemon = True
         self.camera = PiCamera()
         self.camera.resolution = (640, 480)
         self.camera.shutter_speed = SHUTTER_SPEED
@@ -86,12 +87,14 @@ class Server:
             elif command['command'] == "shot_left":
                 duty = SHOT_L_PWM / 18 + 2
                 self.pwm.ChangeDutyCycle(duty)
+                time.sleep(1)
+                duty = SHOT_NEUTRAL / 18 + 2
+                self.pwm.ChangeDutyCycle(duty)
                 conn.sendall(b'success')
             elif command['command'] == "shot_right":
                 duty = SHOT_R_PWM / 18 + 2
                 self.pwm.ChangeDutyCycle(duty)
-                conn.sendall(b'success')
-            elif command['command'] == "shot_neutral":
+                time.sleep(1)
                 duty = SHOT_NEUTRAL / 18 + 2
                 self.pwm.ChangeDutyCycle(duty)
                 conn.sendall(b'success')

@@ -19,8 +19,8 @@ class MiscClient:
     def __sendPacket(self, command):
         raw_command = bytes(json.dumps(command), 'utf-8')
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setblocking(0)
         sock.connect((self.ip, self.port))
+        sock.setblocking(0)
         sock.sendall(raw_command)
         ready = select.select([sock], [], [], MAX_TIMEOUT)
         if ready[0]:
@@ -37,10 +37,6 @@ class MiscClient:
 
     def shot_right(self):
         command = {"command": "shot_right"}
-        return self.__sendPacket(command)
-
-    def shot_neutral(self):
-        command = {"command": "shot_neutral"}
         return self.__sendPacket(command)
 
     def register_udp(self):
@@ -89,18 +85,17 @@ if __name__ == "__main__":
     misc = MiscClient()
     prev_pos = 0
     while True:
-        # num = random.randint(0, 2)
-        # while num == prev_pos:
-        #     num = random.randint(0,2)
-        # if num == 0:
-        #     misc.shot_left()
-        # elif num == 1:
-        #     misc.shot_right()
-        # else:
-        #     misc.shot_neutral()
-        # prev_pos = num
+        num = random.randint(0, 2)
+        while num == prev_pos:
+            num = random.randint(0, 2)
+        if num == 0:
+            misc.shot_left()
+        else:
+            misc.shot_right()
+        prev_pos = num
+        time.sleep(10)
 
-        img = misc.recievePhoto()
-        cv2.imshow('frame', img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # img = misc.recievePhoto()
+        # cv2.imshow('frame', img)
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
