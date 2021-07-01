@@ -451,7 +451,7 @@ int main()
 
             if (command_type == "land")
             {
-                auto resut = action.land();
+                auto result = action.land();
                 if (result == Action::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
