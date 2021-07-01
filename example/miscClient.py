@@ -6,12 +6,13 @@ import cv2
 import numpy as np
 import select
 
-MAX_DGRAM = 2**16
+MAX_DGRAM = 2**10
 MAX_TIMEOUT = 2
+COMM_PORT = 6970
 
 
 class MiscClient:
-    def __init__(self, ip="10.8.0.8", port=6970):
+    def __init__(self, ip="10.8.0.8", port=COMM_PORT):
         self.ip = ip
         self.port = port
         self.udpRegistered = False
@@ -25,6 +26,7 @@ class MiscClient:
         ready = select.select([sock], [], [], MAX_TIMEOUT)
         if ready[0]:
             response = sock.recv(256)
+            print(response)
             sock.close()
             return response == b'success\x00'
         else:
@@ -39,65 +41,18 @@ class MiscClient:
         command = {"command": "shot_macz"}
         return self.__sendPacket(command)
 
-    def register_udp(self):
-        command = {"command": "sub_photo"}
-        result = self.__sendPacket(command)
-        self.udpRegistered = True
-        return result
-
-    def __dump_buffer(self, s):
-        """ Emptying buffer frame """
-        while True:
-            seg, _ = s.recvfrom(MAX_DGRAM)
-            if len(seg) == 0:
-                self.__dump_buffer(s)
-                return
-            if struct.unpack('B', seg[0:1])[0] == 1:
-                return
-
-    def recievePhoto(self):
-        if not self.udpRegistered:
-            self.register_udp()
-        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp.bind(("", 6970))
-        self.__dump_buffer(udp)
-        dat = b''
-        while True:
-            seg, _ = udp.recvfrom(MAX_DGRAM)
-            if len(seg) == 0:
-                udp.close()
-                return self.recievePhoto()
-            if struct.unpack('B', seg[0:1])[0] > 1:
-                dat += seg[1:]
-            else:
-                dat += seg[1:]
-                udp.close()
-                frame = cv2.imdecode(np.fromstring(dat, dtype=np.uint8), 1)
-                if frame is not None:
-                    return frame
-                else:
-                    return self.recievePhoto()
-
 
 if __name__ == "__main__":
     import random
     import time
     misc = MiscClient()
-    prev_pos = 0
+    num = 0
     while True:
-        num = random.randint(0, 2)
-        while num == prev_pos:
-            num = random.randint(0, 2)
-        if num == 0:
+        if num % 2:
             print("parch")
             misc.shot_parch()
         else:
             print("macz")
             misc.shot_macz()
-        prev_pos = num
+        num += 1
         time.sleep(10)
-
-        # img = misc.recievePhoto()
-        # cv2.imshow('frame', img)
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-        #     break

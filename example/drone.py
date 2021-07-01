@@ -4,6 +4,7 @@
 import socket
 import json
 import select
+import time
 
 MAX_TIMEOUT = 2
 
@@ -40,8 +41,8 @@ class Drone:
     def __sendPacket(self, command):
         raw_command = bytes(json.dumps(command), 'utf-8')
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setblocking(0)
         sock.connect((self.ip, self.port))
+        sock.setblocking(0)
         sock.sendall(raw_command)
         ready = select.select([sock], [], [], MAX_TIMEOUT)
         if ready[0]:
@@ -90,41 +91,60 @@ class Drone:
         }
         return self.__sendPacket(command)
 
+    def land(self):
+        command = {
+            "command": "land"
+        }
+        return self.__sendPacket(command)
+
 
 def main():
     import time
     #drone = Drone("6.tcp.ngrok.io", 16052)
-    drone = Drone("localhost", 6969)
+    drone = Drone("10.8.0.3", 6969)
 
-    altitude = 15.0
+    print(drone.getTelem())
 
-    if not drone.arm_takeoff(altitude):
-        print("error in takeoff!")
-        return
+    altitude = 4.0
 
-    while drone.getTelem()['position']['alt_rel'] < (altitude - 0.5):
-        print("...")
-        time.sleep(0.5)
+    # drone.arm_takeoff(5.0)
 
-    print("wait 3s")
-    time.sleep(3)
-    print("RTL!")
+    # time.sleep(1.0)
 
-    if not drone.rtl():
-        print("error in RTL!")
-        return
+    # while drone.getTelem()['position']['alt_rel'] < (altitude - 0.5):
+    #     print("...")
+    #     time.sleep(0.5)
 
-    while drone.getTelem()['misc']['inAir']:
-        print("...")
-        time.sleep(0.5)
-    print("landed!")
+    # print("finished")
+
+    drone.goto(50.288620, 18.679854, altitude, 10.0)
+
+    # drone.rtl()
+
+    # altitude = 15.0
+
+    # if not drone.arm_takeoff(altitude):
+    #     print("error in takeoff!")
+    #     return
+
+    # print("wait 3s")
+    # time.sleep(3)
+    # print("RTL!")
+
+    # if not drone.rtl():
+    #     print("error in RTL!")
+    #     return
+
+    # while drone.getTelem()['misc']['inAir']:
+    #     print("...")
+    #     time.sleep(0.5)
+    # print("landed!")
 
     # while True:
     #     print(drone.getTelem())
     #     time.sleep(0.1)
 
     # print(drone.getTelem())
-
 
     # drone.goto(
     #     47.39807052349714,
