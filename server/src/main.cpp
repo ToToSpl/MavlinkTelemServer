@@ -448,6 +448,20 @@ int main()
                 }
                 continue;
             }
+
+            if (command_type == "land")
+            {
+                auto resut = action.land();
+                if (result == Action::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
         }
     }
 
