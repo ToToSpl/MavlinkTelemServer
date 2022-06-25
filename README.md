@@ -11,5 +11,5 @@ docker build . -t mavsdk_simple_server
 ## Running
 
 ```
-docker run -p 6969:6969 -p 14540:14540/udp mavsdk_simple_server:latest
+docker run -p 6969:6969 -p 14540:14540/udp -d --restart unless-stopped mavsdk_simple_server:latest
 ```
