@@ -108,6 +108,9 @@ int main()
     ConnectionResult connection_result;
     TelemPack global_pack;
 
+    bool offb_running = false;
+    auto offb_last_time = std::chrono::high_resolution_clock::now();
+
     std::vector<std::string> udp_ips = {};
 
     connection_result = mavsdk.add_any_connection("udp://:14540");
@@ -229,6 +232,29 @@ int main()
                                                    std::chrono::milliseconds(period_ms - sending_time.count()));
                                            } });
         send_thread.detach();
+
+        auto offb_check_thread = std::thread([&offb_running, &offb_last_time, &offboard](){
+            int period_ms = (1.0f / REFRESH_TELEM) * 1000.0f;
+            while (true)
+            {
+                if(offb_running) {
+                    auto now = std::chrono::high_resolution_clock::now();
+                    auto time_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - offb_last_time);
+
+                    if (time_elapsed.count() > 2.0f * 1000.0f)
+                    {
+                        std::cout << ERROR_CONSOLE_TEXT << "STOPING OFFBOARD!" << NORMAL_CONSOLE_TEXT << std::endl;
+                        auto result = offboard.stop();
+                        if(result == Offboard::Result::Success)
+                            offb_running = false;
+                    }
+
+                    std::this_thread::sleep_for(std::chrono::milliseconds(period_ms));
+                }
+            }
+        });
+
+        offb_check_thread.detach();
     }
     // server loop
     {
@@ -453,10 +479,13 @@ int main()
 
             if (command_type == "offboard_start")
             {
+                action.hold();
+                std::cout << TELEMETRY_CONSOLE_TEXT << "offboard start" << NORMAL_CONSOLE_TEXT  << std::endl;
                 auto result = offboard.start();
                 if (result == Offboard::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
+                    offb_running = true;
                 }
                 else
                 {
@@ -467,10 +496,12 @@ int main()
 
             if (command_type == "offboard_stop")
             {
+                std::cout << TELEMETRY_CONSOLE_TEXT << "offboard stop" << NORMAL_CONSOLE_TEXT  << std::endl;
                 auto result = offboard.stop();
                 if (result == Offboard::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
+                    offb_running = false;
                 }
                 else
                 {
@@ -481,6 +512,7 @@ int main()
 
             if (command_type == "offboard_cmd")
             {
+                std::cout << TELEMETRY_CONSOLE_TEXT << "offboard cmd" << NORMAL_CONSOLE_TEXT  << std::endl;
                 float x = 0.0f, y = 0.0f, z = 0.0f;
 
                 try
@@ -507,16 +539,13 @@ int main()
                     y = (y / speed) * MAX_OFB_SPEED;
                 }
 
-                auto cmd = Offboard::VelocityBodyYawspeed();
-                cmd.down_m_s = -z;
-                cmd.forward_m_s = x;
-                cmd.right_m_s = y;
-                cmd.yawspeed_deg_s = 0.0f;
-
+                Offboard::VelocityBodyYawspeed cmd{(float)x, (float)y, (float)z, (float)0.0f};
                 auto result = offboard.set_velocity_body(cmd);
+
                 if (result == Offboard::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
+                    offb_last_time = std::chrono::high_resolution_clock::now();
                 }
                 else
                 {

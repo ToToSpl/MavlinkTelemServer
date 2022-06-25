@@ -2,16 +2,32 @@
 
 import socket
 import json
+import select
+
+from time import sleep
+from threading import Thread
+from drone import Drone
 
 HOST = "127.0.0.1"
 PORT = 6969
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect((HOST, PORT))
-sock.sendall(b'get')
-data = json.loads(sock.recv(2048))
+drone = Drone(HOST, PORT)
 
-sock.close()
+def fly():
+    for _ in range(100):
+        drone.offboard_cmd(-2.0, 0.0, 0.0)
+        sleep(0.05)
 
-print(data)
-#print(data["position"]["lat"])
+    drone.offboard_stop()
+
+print(drone.getTelem())
+
+thread = Thread(target=fly)
+thread.start()
+print("thread start")
+
+drone.offboard_start()
+print("offb start")
+sleep(10.0)
+
+thread.join()
