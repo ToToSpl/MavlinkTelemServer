@@ -3,6 +3,7 @@
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/offboard/offboard.h>
 #include <iostream>
 #include <future>
 #include <vector>
@@ -15,6 +16,10 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+#ifdef __APPLE__
+#define MSG_CONFIRM 0
+#endif
+
 using namespace mavsdk;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
@@ -25,6 +30,9 @@ using std::this_thread::sleep_for;
 
 #define BUFFER_SIZE 256
 #define REFRESH_TELEM 90.0f
+
+#define MAX_OFB_SPEED 2.0f   // 2 m/s
+#define MAX_OFB_Z_SPEED 1.0f // 1 m/s
 
 struct TelemPack
 {
@@ -126,8 +134,7 @@ int main()
                                            // Unsubscribe again as we only want to find one system.
                                            mavsdk.subscribe_on_new_system(nullptr);
                                            prom.set_value(system);
-                                       }
-                                   });
+                                       } });
 
     if (fut.wait_for(seconds(3)) == std::future_status::timeout)
     {
@@ -139,6 +146,7 @@ int main()
     auto system = fut.get();
     auto telemetry = Telemetry{system};
     auto action = Action{system};
+    auto offboard = Offboard{system};
 
     // lambdas for telemetry
     telemetry.subscribe_position([&global_pack](Telemetry::Position position)
@@ -146,34 +154,29 @@ int main()
                                      global_pack.latitude = position.latitude_deg;
                                      global_pack.longitude = position.longitude_deg;
                                      global_pack.abs_alt = position.absolute_altitude_m;
-                                     global_pack.rel_alt = position.relative_altitude_m;
-                                 });
+                                     global_pack.rel_alt = position.relative_altitude_m; });
 
     telemetry.subscribe_velocity_ned([&global_pack](Telemetry::VelocityNed vel)
                                      {
                                          global_pack.vel_down = vel.down_m_s;
                                          global_pack.vel_east = vel.east_m_s;
-                                         global_pack.vel_north = vel.north_m_s;
-                                     });
+                                         global_pack.vel_north = vel.north_m_s; });
 
     telemetry.subscribe_fixedwing_metrics([&global_pack](Telemetry::FixedwingMetrics met)
                                           {
                                               global_pack.airspeed = met.airspeed_m_s;
-                                              global_pack.climb_rate = met.climb_rate_m_s;
-                                          });
+                                              global_pack.climb_rate = met.climb_rate_m_s; });
 
     telemetry.subscribe_attitude_euler([&global_pack](Telemetry::EulerAngle ang)
                                        {
                                            global_pack.pitch_deg = ang.pitch_deg;
                                            global_pack.roll_deg = ang.roll_deg;
-                                           global_pack.yaw_deg = ang.yaw_deg;
-                                       });
+                                           global_pack.yaw_deg = ang.yaw_deg; });
 
     telemetry.subscribe_battery([&global_pack](Telemetry::Battery batt)
                                 {
                                     global_pack.batt_percentage = batt.remaining_percent;
-                                    global_pack.batt_voltage = batt.voltage_v;
-                                });
+                                    global_pack.batt_voltage = batt.voltage_v; });
 
     telemetry.subscribe_health_all_ok([&global_pack](bool health)
                                       { global_pack.isAllOk = health; });
@@ -224,8 +227,7 @@ int main()
                                                auto sending_time = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
                                                std::this_thread::sleep_for(
                                                    std::chrono::milliseconds(period_ms - sending_time.count()));
-                                           }
-                                       });
+                                           } });
         send_thread.detach();
     }
     // server loop
@@ -446,6 +448,81 @@ int main()
                 {
                     send(new_socket, "failed", 7, 0);
                 }
+                continue;
+            }
+
+            if (command_type == "offboard_start")
+            {
+                auto result = offboard.start();
+                if (result == Offboard::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
+
+            if (command_type == "offboard_stop")
+            {
+                auto result = offboard.stop();
+                if (result == Offboard::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+                continue;
+            }
+
+            if (command_type == "offboard_cmd")
+            {
+                float x = 0.0f, y = 0.0f, z = 0.0f;
+
+                try
+                {
+                    x = (float)command["x"];
+                    y = (float)command["y"];
+                    z = (float)command["z"];
+                }
+                catch (nlohmann::json::exception &ex)
+                {
+                    std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
+                    std::string error(ex.what());
+                    send(new_socket, error.c_str(), error.size(), 0);
+                    continue;
+                }
+
+                if (std::fabs(z) > MAX_OFB_Z_SPEED)
+                    z = (z / std::fabs(z)) * MAX_OFB_Z_SPEED;
+
+                float speed = sqrt(x * x + y * y);
+                if (speed > MAX_OFB_SPEED)
+                {
+                    x = (x / speed) * MAX_OFB_SPEED;
+                    y = (y / speed) * MAX_OFB_SPEED;
+                }
+
+                auto cmd = Offboard::VelocityBodyYawspeed();
+                cmd.down_m_s = -z;
+                cmd.forward_m_s = x;
+                cmd.right_m_s = y;
+                cmd.yawspeed_deg_s = 0.0f;
+
+                auto result = offboard.set_velocity_body(cmd);
+                if (result == Offboard::Result::Success)
+                {
+                    send(new_socket, "success", 8, 0);
+                }
+                else
+                {
+                    send(new_socket, "failed", 7, 0);
+                }
+
                 continue;
             }
 

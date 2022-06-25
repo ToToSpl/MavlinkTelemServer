@@ -97,6 +97,27 @@ class Drone:
         }
         return self.__sendPacket(command)
 
+    def offboard_start(self):
+        command = {
+            "command": "offboard_start"
+        }
+        return self.__sendPacket(command)
+
+    def offboard_stop(self):
+        command = {
+            "command": "offboard_stop"
+        }
+        return self.__sendPacket(command)
+
+    def offboard_cmd(self, x, y, z):
+        command = {
+            "command": "offboard_cmd",
+            "x": x,
+            "y": y,
+            "z": z
+        }
+        return self.__sendPacket(command)
+
 
 def main():
     import time
@@ -145,6 +166,7 @@ def main():
     #     time.sleep(0.1)
 
     # print(drone.getTelem())
+
 
     # drone.goto(
     #     47.39807052349714,
