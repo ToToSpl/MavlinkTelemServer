@@ -19,9 +19,9 @@ add_executable(server
 
 target_link_libraries(server
    LINK_PRIVATE pthread
-   #   LINK_PRIVATE MAVSDK::mavsdk_telemetry 
-   #   LINK_PRIVATE MAVSDK::mavsdk_action
-   #   LINK_PRIVATE MAVSDL::mavsdk_offboard
+   LINK_PRIVATE MAVSDK::mavsdk_telemetry 
+   LINK_PRIVATE MAVSDK::mavsdk_action
+   LINK_PRIVATE MAVSDK::mavsdk_offboard
    LINK_PRIVATE MAVSDK::mavsdk 
 )
 
