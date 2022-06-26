@@ -96,6 +96,12 @@ class Drone:
             "command": "land"
         }
         return self.__sendPacket(command)
+        
+    def hold(self):
+        command = {
+            "command": "hold"
+        }
+        return self.__sendPacket(command)
 
     def offboard_start(self):
         command = {
