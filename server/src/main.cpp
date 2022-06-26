@@ -110,6 +110,8 @@ int main()
 
     bool offb_running = false;
     auto offb_last_time = std::chrono::high_resolution_clock::now();
+    Telemetry::FlightMode flightMode;
+    Offboard::VelocityBodyYawspeed cmd_zero{(float)0.0f, (float)0.0f, (float)0.0f, (float)0.0f};
 
     std::vector<std::string> udp_ips = {};
 
@@ -189,6 +191,9 @@ int main()
 
     telemetry.subscribe_in_air([&global_pack](bool inAir)
                                { global_pack.inAir = inAir; });
+
+    telemetry.subscribe_flight_mode([&flightMode](Telemetry::FlightMode fm)
+                                    { flightMode = fm; });
 
     // creating udp thread
     {
@@ -293,7 +298,8 @@ int main()
             if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
             {
                 std::cout << TELEMETRY_CONSOLE_TEXT << "accepting failed" << NORMAL_CONSOLE_TEXT << std::endl;
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             read(new_socket, buffer, BUFFER_SIZE);
@@ -302,7 +308,8 @@ int main()
                 // pack to json
                 std::string jsonDump = pack_to_json(global_pack);
                 send(new_socket, jsonDump.c_str(), jsonDump.length(), 0);
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             nlohmann::json command;
@@ -317,7 +324,8 @@ int main()
                 std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
                 std::string error(ex.what());
                 send(new_socket, error.c_str(), error.size(), 0);
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "goto")
@@ -336,7 +344,8 @@ int main()
                     std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
                     std::string error(ex.what());
                     send(new_socket, error.c_str(), error.size(), 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
                 float alt_abs = global_pack.abs_alt + (alt - global_pack.rel_alt);
                 auto result = action.goto_location(lat, lon, alt_abs, heading);
@@ -348,7 +357,8 @@ int main()
                 {
                     send(new_socket, "failed", 7, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "takeoff")
@@ -363,13 +373,15 @@ int main()
                     std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
                     std::string error(ex.what());
                     send(new_socket, error.c_str(), error.size(), 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
                 auto change_alt_result = action.set_takeoff_altitude(alt);
                 if (change_alt_result != Action::Result::Success)
                 {
                     send(new_socket, "failed change_alt", 18, 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
 
                 auto result = action.takeoff();
@@ -381,7 +393,8 @@ int main()
                 {
                     send(new_socket, "failed takeoff", 15, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "arm_takeoff")
@@ -396,21 +409,24 @@ int main()
                     std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
                     std::string error(ex.what());
                     send(new_socket, error.c_str(), error.size(), 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
 
                 auto change_alt_result = action.set_takeoff_altitude(alt);
                 if (change_alt_result != Action::Result::Success)
                 {
                     send(new_socket, "failed change_alt", 18, 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
 
                 auto arm_result = action.arm();
                 if (arm_result != Action::Result::Success)
                 {
                     send(new_socket, "failed arm", 11, 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
 
                 auto result = action.takeoff();
@@ -422,7 +438,8 @@ int main()
                 {
                     send(new_socket, "failed takeoff", 15, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "rtl")
@@ -436,7 +453,8 @@ int main()
                 {
                     send(new_socket, "failed", 7, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "add_udp")
@@ -463,7 +481,8 @@ int main()
                     std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
                     std::string error(ex.what());
                     send(new_socket, error.c_str(), error.size(), 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
                 auto result = action.set_actuator(index, value);
                 if (result == Action::Result::Success)
@@ -474,31 +493,36 @@ int main()
                 {
                     send(new_socket, "failed", 7, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "offboard_start")
             {
                 action.hold();
                 std::cout << TELEMETRY_CONSOLE_TEXT << "offboard start" << NORMAL_CONSOLE_TEXT  << std::endl;
-                auto result = offboard.start();
-                if (result == Offboard::Result::Success)
+                auto result1 = offboard.set_velocity_body(cmd_zero);
+                auto result2 = offboard.start();
+                if (result1 == Offboard::Result::Success && result2 == Offboard::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
+                    offb_last_time = std::chrono::high_resolution_clock::now();
                     offb_running = true;
                 }
                 else
                 {
                     send(new_socket, "failed", 7, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "offboard_stop")
             {
                 std::cout << TELEMETRY_CONSOLE_TEXT << "offboard stop" << NORMAL_CONSOLE_TEXT  << std::endl;
-                auto result = offboard.stop();
-                if (result == Offboard::Result::Success)
+                auto result1 = offboard.stop();
+                auto result2 = action.hold();
+                if (result1 == Offboard::Result::Success && result2 == Action::Result::Success)
                 {
                     send(new_socket, "success", 8, 0);
                     offb_running = false;
@@ -507,7 +531,8 @@ int main()
                 {
                     send(new_socket, "failed", 7, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "offboard_cmd")
@@ -526,8 +551,18 @@ int main()
                     std::cout << ERROR_CONSOLE_TEXT << ex.what() << NORMAL_CONSOLE_TEXT << std::endl;
                     std::string error(ex.what());
                     send(new_socket, error.c_str(), error.size(), 0);
-                    continue;
+                    close(new_socket);
+		            continue;
                 }
+
+                if(offb_running && flightMode != Telemetry::FlightMode::Offboard)
+                {
+                    auto res1 = offboard.set_velocity_body(cmd_zero);
+                    auto res2 = offboard.start();
+                    if (res1 == Offboard::Result::Success && res2 == Offboard::Result::Success)
+                        offb_running = true;
+                }
+                    
 
                 if (std::fabs(z) > MAX_OFB_Z_SPEED)
                     z = (z / std::fabs(z)) * MAX_OFB_Z_SPEED;
@@ -552,7 +587,8 @@ int main()
                     send(new_socket, "failed", 7, 0);
                 }
 
-                continue;
+                close(new_socket);
+		        continue;
             }
 
             if (command_type == "land")
@@ -566,7 +602,8 @@ int main()
                 {
                     send(new_socket, "failed", 7, 0);
                 }
-                continue;
+                close(new_socket);
+		        continue;
             }
         }
     }
